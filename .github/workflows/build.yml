@@ -12,11 +12,16 @@ jobs:
           tar xvf wasi-sdk-22.0-linux.tar.gz
       - name: Build
         run: |
-          mkdir build && cd build
-          cmake .. -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/wasi-sdk-22.0/share/cmake/wasi-sdk.cmake \
-                   -DWASI_SDK_PREFIX=$GITHUB_WORKSPACE/wasi-sdk-22.0 -DBUILD_TOOLS=ON \
-                   -DCMAKE_USE_PTHREADS_INIT=OFF -DTHREADS_PREFER_PTHREAD_FLAG=OFF
-          make wasm-opt
+              # 1. Patch CMakeLists.txt to remove the strict Threads requirement
+              sed -i 's/find_package(Threads REQUIRED)//g' CMakeLists.txt
+              sed -i 's/Threads::Threads//g' CMakeLists.txt
+              
+              # 2. Build normally
+              mkdir build && cd build
+              cmake .. -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/wasi-sdk-22.0/share/cmake/wasi-sdk.cmake \
+                       -DWASI_SDK_PREFIX=$GITHUB_WORKSPACE/wasi-sdk-22.0 \
+                       -DBUILD_TOOLS=ON
+              make wasm-opt
       - uses: actions/upload-artifact@v4
         with:
           name: wasm-opt-binary
