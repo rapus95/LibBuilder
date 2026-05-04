@@ -17,16 +17,15 @@ jobs:
           
       - name: Build
         run: |
-          # Patch CMakeLists.txt to remove the strict Threads requirement
-          sed -i 's/find_package(Threads REQUIRED)//g' CMakeLists.txt
-          sed -i 's/Threads::Threads//g' CMakeLists.txt
-          
           mkdir build && cd build
-          cmake .. -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/wasi-sdk-22.0/share/cmake/wasi-sdk.cmake \
+          # THE FIX: Notice the "-pthread.cmake" at the end of the toolchain line!
+          cmake .. -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/wasi-sdk-22.0/share/cmake/wasi-sdk-pthread.cmake \
                    -DWASI_SDK_PREFIX=$GITHUB_WORKSPACE/wasi-sdk-22.0 \
                    -DBUILD_TOOLS=ON \
                    -DBUILD_TESTS=OFF
-          make wasm-opt
+                   
+          # Added -j to use all GitHub Action CPU cores (much faster)
+          make wasm-opt -j$(nproc)
           
       - uses: actions/upload-artifact@v4
         with:
