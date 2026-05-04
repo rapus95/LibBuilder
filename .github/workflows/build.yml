@@ -18,14 +18,16 @@ jobs:
       - name: Build
         run: |
           mkdir build && cd build
-          # THE FIX: Notice the "-pthread.cmake" at the end of the toolchain line!
           cmake .. -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/wasi-sdk-22.0/share/cmake/wasi-sdk-pthread.cmake \
                    -DWASI_SDK_PREFIX=$GITHUB_WORKSPACE/wasi-sdk-22.0 \
                    -DBUILD_TOOLS=ON \
-                   -DBUILD_TESTS=OFF
+                   -DBUILD_TESTS=OFF \
+                   -DBUILD_SHARED_LIBS=OFF \
+                   -DBUILD_STATIC_LIB=ON \
+                   -DCMAKE_CXX_FLAGS="-pthread"
                    
-          # Added -j to use all GitHub Action CPU cores (much faster)
-          make wasm-opt -j$(nproc)
+          # Limit jobs to 2 to prevent runner Out-Of-Memory kills
+          make wasm-opt -j2
           
       - uses: actions/upload-artifact@v4
         with:
