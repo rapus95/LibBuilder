@@ -14,7 +14,8 @@ jobs:
         run: |
           mkdir build && cd build
           cmake .. -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/wasi-sdk-22.0/share/cmake/wasi-sdk.cmake \
-                   -DWASI_SDK_PREFIX=$GITHUB_WORKSPACE/wasi-sdk-22.0 -DBUILD_TOOLS=ON
+                   -DWASI_SDK_PREFIX=$GITHUB_WORKSPACE/wasi-sdk-22.0 -DBUILD_TOOLS=ON \
+                   -DCMAKE_USE_PTHREADS_INIT=OFF -DTHREADS_PREFER_PTHREAD_FLAG=OFF
           make wasm-opt
       - uses: actions/upload-artifact@v4
         with:
