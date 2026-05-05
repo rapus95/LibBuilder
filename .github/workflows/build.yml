@@ -28,18 +28,16 @@ jobs:
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
-          # We append the input state to the cache key. 
-          # This ensures the vanilla build and custom build don't overwrite each other's caches!
           key: binaryen-wasi-ccache-${{ inputs.with_custom_pass }}
           
       - name: Install Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build
-          wget https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-22/wasi-sdk-22.0-linux.tar.gz
-          tar xvf wasi-sdk-22.0-linux.tar.gz
+          # Download WASI SDK 33
+          wget https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-33/wasi-sdk-33.0-x86_64-linux.tar.gz
+          tar xvf wasi-sdk-33.0-x86_64-linux.tar.gz
 
-      # This step ONLY runs if the checkbox was left checked
       - name: Inject Custom Pass into Binaryen
         if: ${{ inputs.with_custom_pass }}
         run: |
@@ -54,9 +52,10 @@ jobs:
           cd binaryen
           mkdir build && cd build
           
+          # Notice the updated paths pointing to the wasi-sdk-33.0-x86_64-linux folder
           cmake .. -G Ninja \
-                   -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/wasi-sdk-22.0/share/cmake/wasi-sdk-pthread.cmake \
-                   -DWASI_SDK_PREFIX=$GITHUB_WORKSPACE/wasi-sdk-22.0 \
+                   -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/wasi-sdk-33.0-x86_64-linux/share/cmake/wasi-sdk-pthread.cmake \
+                   -DWASI_SDK_PREFIX=$GITHUB_WORKSPACE/wasi-sdk-33.0-x86_64-linux \
                    -DBUILD_TOOLS=ON \
                    -DBUILD_TESTS=OFF \
                    -DBUILD_SHARED_LIBS=OFF \
