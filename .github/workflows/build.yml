@@ -1,35 +1,73 @@
-name: Build wasm-opt.wasm
-on: workflow_dispatch
+name: Build Custom wasm-opt.wasm
+on: 
+  workflow_dispatch:
+    inputs:
+      with_custom_pass:
+        description: 'Inject InjectYields.cpp pass'
+        required: true
+        type: boolean
+        default: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout my repo
+        uses: actions/checkout@v4
+        with:
+          path: 'my-repo'
+
+      - name: Checkout Binaryen
+        uses: actions/checkout@v4
         with: 
           repository: 'WebAssembly/binaryen'
-          fetch-depth: 0
+          path: 'binaryen'
+          fetch-depth: 1
           submodules: recursive
           
-      - name: Install WASI SDK
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          # We append the input state to the cache key. 
+          # This ensures the vanilla build and custom build don't overwrite each other's caches!
+          key: binaryen-wasi-ccache-${{ inputs.with_custom_pass }}
+          
+      - name: Install Dependencies
         run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
           wget https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-22/wasi-sdk-22.0-linux.tar.gz
           tar xvf wasi-sdk-22.0-linux.tar.gz
-          
+
+      # This step ONLY runs if the checkbox was left checked
+      - name: Inject Custom Pass into Binaryen
+        if: ${{ inputs.with_custom_pass }}
+        run: |
+          cp my-repo/InjectYields.cpp binaryen/src/passes/
+          cd binaryen
+          sed -i '/src\/passes\/Asyncify.cpp/a \  src/passes/InjectYields.cpp' CMakeLists.txt
+          sed -i '/namespace wasm {/a Pass* createInjectYieldsPass();' src/passes/pass.cpp
+          sed -i '/registerPass("asyncify"/a \  registerPass("inject-yields", "Injects cooperative yielding checks", createInjectYieldsPass);' src/passes/pass.cpp
+
       - name: Build
         run: |
+          cd binaryen
           mkdir build && cd build
-          cmake .. -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/wasi-sdk-22.0/share/cmake/wasi-sdk-pthread.cmake \
+          
+          cmake .. -G Ninja \
+                   -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/wasi-sdk-22.0/share/cmake/wasi-sdk-pthread.cmake \
                    -DWASI_SDK_PREFIX=$GITHUB_WORKSPACE/wasi-sdk-22.0 \
                    -DBUILD_TOOLS=ON \
                    -DBUILD_TESTS=OFF \
                    -DBUILD_SHARED_LIBS=OFF \
                    -DBUILD_STATIC_LIB=ON \
+                   -DCMAKE_BUILD_TYPE=Release \
+                   -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
                    -DCMAKE_CXX_FLAGS="-pthread -fno-exceptions"
                    
-          # Limit jobs to 2 to prevent runner Out-Of-Memory kills
-          make wasm-opt -j2
+          ninja wasm-opt -j4
           
       - uses: actions/upload-artifact@v4
         with:
           name: wasm-opt-binary
-          path: build/bin/wasm-opt
+          path: binaryen/build/bin/wasm-opt
