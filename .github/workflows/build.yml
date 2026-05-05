@@ -51,6 +51,9 @@ jobs:
         run: |
           cd binaryen
           mkdir build && cd build
+
+          # Hartwork's workaround: Patch the target directly inside the pthread toolchain file!
+          sed -i 's/wasm32-wasi/wasm32-wasip1/g' $GITHUB_WORKSPACE/wasi-sdk-33.0-x86_64-linux/share/cmake/wasi-sdk-pthread.cmake
           
           # Notice the updated paths pointing to the wasi-sdk-33.0-x86_64-linux folder
           cmake .. -G Ninja \
