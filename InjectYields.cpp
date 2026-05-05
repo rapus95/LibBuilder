@@ -26,9 +26,6 @@ struct InjectYields : public Pass {
       mem->name = asyncMemName;
       mem->addressType = Type::i32; // Force 32-bit pointers for dataPtr=0
       
-      // EXPLICITLY ENABLE CUSTOM PAGE SIZES
-      module->features.setCustomPageSizes();
-      
       // Set the page size to 1 byte (2^0)
       mem->pageSizeLog2 = 0; 
       
@@ -38,15 +35,9 @@ struct InjectYields : public Pass {
 
       module->addMemory(std::move(mem));
       
-      auto exp = std::make_unique<Export>();
-      exp->name = asyncMemName;
-      exp->value = asyncMemName;
-      exp->kind = ExternalKind::Memory;
-      module->addExport(std::move(exp));
+      // Use the Builder API to safely create the export (bypassing private fields)
+      module->addExport(builder.makeExport(asyncMemName, asyncMemName, ExternalKind::Memory));
     }
-
-    // Explicitly enable Multi-Memory feature on the Wasm module
-    module->features.setMultiMemory();
 
     // 3. Generate the $handle_yield helper
     generateHandlerFunction(module, builder);
