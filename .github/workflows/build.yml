@@ -57,7 +57,7 @@ jobs:
         run: |
           cp my-repo/InjectYields.cpp binaryen/src/passes/
           cd binaryen
-          sed -i '/src\/passes\/Asyncify.cpp/a \  src/passes/InjectYields.cpp' CMakeLists.txt
+          sed -i 's|\(.*\)Asyncify\.cpp|\1Asyncify.cpp\n\1InjectYields.cpp|g' CMakeLists.txt
           sed -i '/namespace wasm {/a Pass* createInjectYieldsPass();' src/passes/pass.cpp
           sed -i '/registerPass("asyncify"/i \  registerPass("inject-yields", "Injects cooperative yielding checks", createInjectYieldsPass);' src/passes/pass.cpp
 
