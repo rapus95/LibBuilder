@@ -77,31 +77,34 @@ private:
   void generateHandlerFunction(Module* module, Builder& builder) {
     if (module->getFunctionOrNull("handle_yield")) return;
 
-    auto ensureImport = [&](Name mod, Name base, Name internal, Signature sig) {
-      if (!module->getFunctionOrNull(internal)) {
-        auto func = builder.makeFunction(internal, sig, {});
+    // Helper to create the proper WebAssembly imports
+    auto ensureImport = [&](Name mod, Name base, Name internalName, Signature sig) {
+      if (!module->getFunctionOrNull(internalName)) {
+        // Omitting the body argument makes it an import in Binaryen
+        auto func = builder.makeFunction(internalName, sig, {});
         func->module = mod;
         func->base = base;
         module->addFunction(std::move(func));
       }
     };
 
-    // Because we forced Memory 1 to be Type::i32, Asyncify will ALWAYS expect i32 pointers!
-    ensureImport("asyncify", "get_state",    "asyncify_get_state",    Signature(Type::none, Type::i32));
-    ensureImport("asyncify", "stop_rewind",  "asyncify_stop_rewind",  Signature(Type::none, Type::none));
-    ensureImport("asyncify", "start_unwind", "asyncify_start_unwind", Signature(Type::i32, Type::none));
+    // 1. Create the imports using the exact "asyncify.fun_name" syntax for internal names!
+    ensureImport("asyncify", "get_state",    "asyncify.get_state",    Signature(Type::none, Type::i32));
+    ensureImport("asyncify", "stop_rewind",  "asyncify.stop_rewind",  Signature(Type::none, Type::none));
+    ensureImport("asyncify", "start_unwind", "asyncify.start_unwind", Signature(Type::i32, Type::none));
 
+    // 2. Call those imports using the dot-syntax names
     auto* isRewinding = builder.makeBinary(EqInt32,
-        builder.makeCall("asyncify_get_state", {}, Type::i32),
+        builder.makeCall("asyncify.get_state", {}, Type::i32),
         builder.makeConst(int32_t(2))
     );
 
-    auto* stopRewind = builder.makeCall("asyncify_stop_rewind", {}, Type::none);
+    auto* stopRewind = builder.makeCall("asyncify.stop_rewind", {}, Type::none);
 
     // dataPtr is ALWAYS exactly 0!
     auto* triggerUnwind = builder.makeBlock({
         builder.makeGlobalSet("HOST_YIELD_REQUEST", builder.makeConst(int32_t(0))),
-        builder.makeCall("asyncify_start_unwind", { builder.makeConst(int32_t(0)) }, Type::none)
+        builder.makeCall("asyncify.start_unwind", { builder.makeConst(int32_t(0)) }, Type::none)
     });
 
     auto* body = builder.makeIf(isRewinding, stopRewind, triggerUnwind);
