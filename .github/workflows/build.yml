@@ -29,6 +29,7 @@ jobs:
         uses: hendrikmuhs/ccache-action@v1.2
         with:
           key: binaryen-wasi-ccache-${{ inputs.with_custom_pass }}
+          max-size: 2G
           
       - name: Install Dependencies
         run: |
@@ -96,7 +97,7 @@ jobs:
           # --strip-producers = removes telemetry metadata
           # --strip-dwarf = removes any lingering debug info
           ./binaryen-version_117/bin/wasm-opt binaryen/build/bin/wasm-opt \
-              -Oz \
+              -O4 \
               --strip-producers \
               --strip-dwarf \
               -o binaryen/build/bin/wasm-opt-shrunk.wasm
