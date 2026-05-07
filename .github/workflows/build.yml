@@ -1,4 +1,4 @@
-name: Build Custom wasm-opt.wasm
+name: Build Custom Wasm-Opt Reactor
 on: 
   workflow_dispatch:
     inputs:
@@ -38,75 +38,139 @@ jobs:
           wget https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-33/wasi-sdk-33.0-x86_64-linux.tar.gz
           tar xvf wasi-sdk-33.0-x86_64-linux.tar.gz
 
-      - name: Inject WASI Exception Linker Stubs
-        run: |
-          # Inject dummy exception functions to satisfy the WASI linker.
-          # We inject this into the main executable so it applies to both custom and vanilla builds!
-          cat << 'EOF' >> binaryen/src/tools/wasm-opt.cpp
-          
-          extern "C" {
-              void* __cxa_allocate_exception(unsigned int thrown_size) { __builtin_trap(); return (void*)0; }
-              void __cxa_throw(void *thrown_exception, void *tinfo, void (*dest)(void *)) { __builtin_trap(); }
-              void* __cxa_begin_catch(void* exceptionObject) { __builtin_trap(); return (void*)0; }
-              void __cxa_end_catch() { __builtin_trap(); }
-              int __gxx_personality_v0(...) { __builtin_trap(); return 0; }
-          }
-          EOF
-
       - name: Inject Custom Pass into Binaryen
         if: ${{ inputs.with_custom_pass }}
         run: |
           cp my-repo/InjectYields.cpp binaryen/src/passes/
           cd binaryen
-          # 1. Force CMake to compile our pass into the 'binaryen' library (Foolproof method!)
           echo "target_sources(binaryen PRIVATE src/passes/InjectYields.cpp)" >> CMakeLists.txt
           sed -i '/namespace wasm {/a Pass* createInjectYieldsPass();' src/passes/pass.cpp
           sed -i '/registerPass("asyncify"/i \  registerPass("inject-yields", "Injects cooperative yielding checks", createInjectYieldsPass);' src/passes/pass.cpp
 
-      - name: Build
+      - name: Create C++ Reactor Wrapper
+        run: |
+          cat << 'EOF' > binaryen/src/reactor-pipeline.cpp
+          #include <stdlib.h>
+          #include <string>
+          #include <sstream>
+          #include <cstring>
+          #include <binaryen-c.h>
+          #include "wasm.h"
+          #include "pass.h"
+
+          extern "C" {
+              // Stub out exception functions for the WASI linker
+              void* __cxa_allocate_exception(unsigned int thrown_size) { __builtin_trap(); return (void*)0; }
+              void __cxa_throw(void *thrown_exception, void *tinfo, void (*dest)(void *)) { __builtin_trap(); }
+              void* __cxa_begin_catch(void* exceptionObject) { __builtin_trap(); return (void*)0; }
+              void __cxa_end_catch() { __builtin_trap(); }
+              int __gxx_personality_v0(...) { __builtin_trap(); return 0; }
+
+              struct OptimizeResult {
+                  void* ptr;
+                  size_t len;
+              };
+
+              __attribute__((export_name("host_malloc")))
+              void* host_malloc(size_t size) { return malloc(size); }
+
+              __attribute__((export_name("host_free")))
+              void host_free(void* ptr) { free(ptr); }
+
+              // i32 0 = WASM output, i32 1 = WAT output
+              __attribute__((export_name("run_pipeline")))
+              struct OptimizeResult* run_pipeline(void* input_ptr, size_t input_len, int output_wat) {
+                  // 1. Read untrusted Wasm module (using stable C-API internally to manage AST)
+                  BinaryenModuleRef module_ref = BinaryenModuleRead((char*)input_ptr, input_len);
+                  wasm::Module* module = (wasm::Module*)module_ref;
+
+                  // 2. Equivalent to --enable-custom-page-sizes
+                  module->features.enable(wasm::FeatureSet::CustomPageSizes);
+
+                  // 3. Equivalent to --pass-arg=...
+                  wasm::PassOptions options;
+                  options.arguments["asyncify-ignore-imports"] = "";
+                  options.arguments["asyncify-memory"] = "yield_async_mem";
+                  
+                  // 4. Setup and run PassRunner
+                  wasm::PassRunner runner(module, options);
+                  runner.add("inject-yields"); // Added in your previous step!
+                  runner.add("asyncify");
+                  runner.run();
+
+                  struct OptimizeResult* out_res = (struct OptimizeResult*)malloc(sizeof(struct OptimizeResult));
+
+                  // 5. Generate Output
+                  if (output_wat != 0) {
+                      std::ostringstream ss;
+                      ss << *module;
+                      std::string wat = ss.str();
+                      
+                      out_res->len = wat.length();
+                      out_res->ptr = malloc(out_res->len);
+                      memcpy(out_res->ptr, wat.data(), out_res->len);
+                  } else {
+                      // Equivalent to writing standard WASM format
+                      struct BinaryenModuleAllocateAndWriteResult res = BinaryenModuleAllocateAndWrite(module_ref, NULL);
+                      out_res->len = res.binaryBytes;
+                      out_res->ptr = res.binary; 
+                      if (res.sourceMap) free(res.sourceMap);
+                  }
+
+                  BinaryenModuleDispose(module_ref);
+                  return out_res;
+              }
+          }
+          EOF
+
+      - name: Build Binaryen Static Library
         run: |
           cd binaryen
           mkdir build && cd build
           
-          # Patch the target directly inside the pthread toolchain file
+          # Patch the target
           sed -i 's/wasm32-wasi-threads/wasm32-wasip1-threads/g' $GITHUB_WORKSPACE/wasi-sdk-33.0-x86_64-linux/share/cmake/wasi-sdk-pthread.cmake
           
-          # Notice we removed ALL exception flags from CMAKE_CXX_FLAGS
           cmake .. -G Ninja \
                    -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/wasi-sdk-33.0-x86_64-linux/share/cmake/wasi-sdk-pthread.cmake \
                    -DWASI_SDK_PREFIX=$GITHUB_WORKSPACE/wasi-sdk-33.0-x86_64-linux \
-                   -DBUILD_TOOLS=ON \
+                   -DBUILD_TOOLS=OFF \
                    -DBUILD_TESTS=OFF \
                    -DBUILD_SHARED_LIBS=OFF \
                    -DBUILD_STATIC_LIB=ON \
                    -DCMAKE_BUILD_TYPE=Release \
                    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-                   -DCMAKE_CXX_FLAGS="-pthread -flto" \
-                   -DCMAKE_EXE_LINKER_FLAGS="-flto -Wl,--strip-all -Wl,--gc-sections"
+                   -DCMAKE_CXX_FLAGS="-pthread -flto"
                    
-          ninja wasm-opt -j4
+          # Only build the static library, ignore the executables
+          ninja binaryen -j4
 
-      - name: Meta-Optimize wasm-opt.wasm
+      - name: Compile Custom WASI Reactor
         run: |
-          # 1. Download the native Linux release of Binaryen
+          cd binaryen
+          # Link our custom reactor file against the compiled Binaryen lib
+          $GITHUB_WORKSPACE/wasi-sdk-33.0-x86_64-linux/bin/clang++ \
+            --target=wasm32-wasip1-threads -pthread -flto -O3 \
+            -mexec-model=reactor \
+            -I src \
+            src/reactor-pipeline.cpp \
+            build/lib/libbinaryen.a \
+            -o build/wasm-opt-reactor.wasm \
+            -Wl,--strip-all -Wl,--gc-sections
+
+      - name: Meta-Optimize wasm-opt-reactor.wasm
+        run: |
           wget https://github.com/WebAssembly/binaryen/releases/download/version_117/binaryen-version_117-x86_64-linux.tar.gz
           tar xvf binaryen-version_117-x86_64-linux.tar.gz
           
-          # 2. Use the native wasm-opt to shrink YOUR wasm-opt.wasm!
-          # -O4 = extreme optimization
-          # --strip-producers = removes telemetry metadata
-          # --strip-dwarf = removes any lingering debug info
-          ./binaryen-version_117/bin/wasm-opt binaryen/build/bin/wasm-opt \
+          ./binaryen-version_117/bin/wasm-opt binaryen/build/wasm-opt-reactor.wasm \
               -O4 \
               --all-features \
               --strip-producers \
               --strip-dwarf \
-              -o binaryen/build/bin/wasm-opt-shrunk.wasm
+              -o binaryen/build/wasm-opt-reactor-shrunk.wasm
               
-          # 3. Overwrite the original with the shrunk version
-          mv binaryen/build/bin/wasm-opt-shrunk.wasm binaryen/build/bin/wasm-opt
-          
       - uses: actions/upload-artifact@v4
         with:
-          name: wasm-opt-binary
-          path: binaryen/build/bin/wasm-opt
+          name: wasm-opt-reactor
+          path: binaryen/build/wasm-opt-reactor-shrunk.wasm
