@@ -56,7 +56,7 @@ jobs:
                    -DBUILD_STATIC_LIB=ON \
                    -DCMAKE_BUILD_TYPE=Release \
                    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-                   -DCMAKE_CXX_FLAGS="-pthread -flto -fno-exceptions -fno-rtti"
+                   -DCMAKE_CXX_FLAGS="-pthread -flto"
                    
           ninja binaryen -j4
 
@@ -67,7 +67,6 @@ jobs:
           
           $GITHUB_WORKSPACE/wasi-sdk-33.0-x86_64-linux/bin/clang++ \
             --target=wasm32-wasip1-threads -pthread -flto -O3 \
-            -fno-exceptions -fno-rtti \
             -mexec-model=reactor \
             -I src \
             src/reactor-pipeline.cpp \
