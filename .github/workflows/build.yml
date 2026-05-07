@@ -93,11 +93,12 @@ jobs:
           tar xvf binaryen-version_117-x86_64-linux.tar.gz
           
           # 2. Use the native wasm-opt to shrink YOUR wasm-opt.wasm!
-          # -Oz = extreme size optimization
+          # -O4 = extreme optimization
           # --strip-producers = removes telemetry metadata
           # --strip-dwarf = removes any lingering debug info
           ./binaryen-version_117/bin/wasm-opt binaryen/build/bin/wasm-opt \
               -O4 \
+              --all-features \
               --strip-producers \
               --strip-dwarf \
               -o binaryen/build/bin/wasm-opt-shrunk.wasm
