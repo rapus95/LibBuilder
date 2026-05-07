@@ -84,6 +84,25 @@ jobs:
                    -DCMAKE_EXE_LINKER_FLAGS="-flto -Wl,--strip-all -Wl,--gc-sections"
                    
           ninja wasm-opt -j4
+
+      - name: Meta-Optimize wasm-opt.wasm
+        run: |
+          # 1. Download the native Linux release of Binaryen
+          wget https://github.com/WebAssembly/binaryen/releases/download/version_117/binaryen-version_117-x86_64-linux.tar.gz
+          tar xvf binaryen-version_117-x86_64-linux.tar.gz
+          
+          # 2. Use the native wasm-opt to shrink YOUR wasm-opt.wasm!
+          # -Oz = extreme size optimization
+          # --strip-producers = removes telemetry metadata
+          # --strip-dwarf = removes any lingering debug info
+          ./binaryen-version_117/bin/wasm-opt binaryen/build/bin/wasm-opt \
+              -Oz \
+              --strip-producers \
+              --strip-dwarf \
+              -o binaryen/build/bin/wasm-opt-shrunk.wasm
+              
+          # 3. Overwrite the original with the shrunk version
+          mv binaryen/build/bin/wasm-opt-shrunk.wasm binaryen/build/bin/wasm-opt
           
       - uses: actions/upload-artifact@v4
         with:
