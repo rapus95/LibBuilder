@@ -80,7 +80,8 @@ jobs:
                    -DBUILD_STATIC_LIB=ON \
                    -DCMAKE_BUILD_TYPE=Release \
                    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-                   -DCMAKE_CXX_FLAGS="-pthread"
+                   -DCMAKE_CXX_FLAGS="-pthread -flto" \
+                   -DCMAKE_EXE_LINKER_FLAGS="-flto -Wl,--strip-all -Wl,--gc-sections"
                    
           ninja wasm-opt -j4
           
