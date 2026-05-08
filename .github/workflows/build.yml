@@ -37,7 +37,6 @@ jobs:
         run: |
           cp my-repo/InjectYields.cpp binaryen/src/passes/
           cd binaryen
-          sed -i 's/DeadCode.cpp/DeadCode.cpp InjectYields.cpp/g' src/passes/CMakeLists.txt
           sed -i '/namespace wasm {/a Pass* createInjectYieldsPass();' src/passes/pass.cpp
           sed -i '/registerPass("asyncify"/i \  registerPass("inject-yields", "Injects cooperative yielding checks", createInjectYieldsPass);' src/passes/pass.cpp
 
@@ -74,12 +73,13 @@ jobs:
             -mexec-model=reactor \
             -I src \
             src/reactor-pipeline.cpp \
+            src/passes/InjectYields.cpp \
             build/lib/libbinaryen.a \
             -o build/wasm-opt-reactor.wasm \
             -Wl,--strip-all \
             -Wl,--gc-sections \
             -Wl,--shared-memory \
-            -Wl,--max-memory=536870912 
+            -Wl,--max-memory=536870912
 
       - name: Meta-Optimize wasm-opt-reactor.wasm
         run: |
