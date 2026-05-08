@@ -8,10 +8,10 @@
 #include "pass.h"
 
 extern "C" {
-    // Stub out exception functions for the WASI linker (Safety net)
-    void* __cxa_allocate_exception(unsigned int thrown_size) { __builtin_trap(); return (void*)0; }
+    // Fix: Changed 'unsigned int' to 'size_t' and added 'noexcept' to match WASI-SDK's libc++ headers
+    void* __cxa_allocate_exception(size_t thrown_size) noexcept { __builtin_trap(); return (void*)0; }
     void __cxa_throw(void *thrown_exception, void *tinfo, void (*dest)(void *)) { __builtin_trap(); }
-    void* __cxa_begin_catch(void* exceptionObject) { __builtin_trap(); return (void*)0; }
+    void* __cxa_begin_catch(void* exceptionObject) noexcept { __builtin_trap(); return (void*)0; }
     void __cxa_end_catch() { __builtin_trap(); }
     int __gxx_personality_v0(...) { __builtin_trap(); return 0; }
 
