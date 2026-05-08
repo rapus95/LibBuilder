@@ -1,6 +1,6 @@
 name: Build Custom Wasm-Opt Reactor
 on: 
-  workflow_dispatch: # Can be triggered manually from the GitHub Actions tab
+  workflow_dispatch:
 
 jobs:
   build:
@@ -25,10 +25,11 @@ jobs:
           key: binaryen-wasi-ccache
           max-size: 2G
           
-      - name: Install Dependencies
+      - name: Install Dependencies & Fast WASI SDK
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build
+          # Takes ~5 seconds, and natively contains Clang 22 + WASI Sysroot!
           wget https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-33/wasi-sdk-33.0-x86_64-linux.tar.gz
           tar xvf wasi-sdk-33.0-x86_64-linux.tar.gz
 
@@ -65,8 +66,11 @@ jobs:
           cp my-repo/reactor-pipeline.cpp binaryen/src/
           cd binaryen
           
+          # Using the bundled SDK compiler (Clang 22). 
+          # Notice we added -std=c++20 here to fix the std::unordered_map::contains error!
           $GITHUB_WORKSPACE/wasi-sdk-33.0-x86_64-linux/bin/clang++ \
             --target=wasm32-wasip1-threads -pthread -flto -O3 \
+            -std=c++20 \
             -mexec-model=reactor \
             -I src \
             src/reactor-pipeline.cpp \
