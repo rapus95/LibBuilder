@@ -29,8 +29,22 @@ extern "C" {
     // i32 0 = WASM output, i32 1 = WAT output
     __attribute__((export_name("run_pipeline")))
     struct OptimizeResult* run_pipeline(void* input_ptr, size_t input_len, int output_wat) {
-        // 1. Read untrusted Wasm module (using stable C-API internally to manage AST)
-        BinaryenModuleRef module_ref = BinaryenModuleRead((char*)input_ptr, input_len);
+        
+        BinaryenModuleRef module_ref;
+        char* input = (char*)input_ptr;
+
+        // Auto-Detect WASM vs WAT via magic header (\0asm)
+        if (input_len >= 4 && input[0] == '\0' && input[1] == 'a' && input[2] == 's' && input[3] == 'm') {
+            module_ref = BinaryenModuleRead(input, input_len);
+        } else {
+            // It's WAT! Binaryen C-API expects a null-terminated C-string for WAT parsing.
+            char* wat_str = (char*)malloc(input_len + 1);
+            memcpy(wat_str, input, input_len);
+            wat_str[input_len] = '\0';
+            module_ref = BinaryenModuleParse(wat_str);
+            free(wat_str);
+        }
+
         wasm::Module* module = (wasm::Module*)module_ref;
 
         // 2. Equivalent to --enable-custom-page-sizes
